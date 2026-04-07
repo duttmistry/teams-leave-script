@@ -11,7 +11,23 @@ function log(step, msg) {
 }
 
 /**
- * 🔥 AUTO SCROLL (CORE FIX)
+ * ✅ ASK CONTINUE (IMPROVED PROMPT)
+ */
+function askToContinue() {
+  while (true) {
+    const input = prompt("\nDo you want to continue again? (Y/N): ")
+      .trim()
+      .toLowerCase();
+
+    if (input === "y" || input === "yes") return true;
+    if (input === "n" || input === "no") return false;
+
+    console.log("❌ Invalid input. Please enter Y or N.");
+  }
+}
+
+/**
+ * 🔥 AUTO SCROLL
  */
 async function autoScrollTeams(page) {
   log("SCROLL", "Scrolling to load all teams...");
@@ -54,17 +70,15 @@ async function autoScrollTeams(page) {
 }
 
 /**
- * 🔥 GET ALL TEAMS (FIXED)
+ * 🔥 GET ALL TEAMS
  */
 async function getAllTeams(page) {
   log("FETCH", "Fetching all teams...");
 
   await page.waitForSelector('[role="treeitem"]', { timeout: 60000 });
 
-  // 🔥 Scroll fully
   await autoScrollTeams(page);
 
-  // 🔥 Extract unique names
   const names = await page.$$eval('[role="treeitem"]', (els) => {
     const set = new Set();
     const result = [];
@@ -84,7 +98,6 @@ async function getAllTeams(page) {
 
   log("FETCH", `Total teams found: ${names.length}`);
 
-  // 🔥 Map back to elements
   const elements = await page.$$('[role="treeitem"]');
   const finalTeams = [];
 
@@ -208,7 +221,7 @@ async function runLeaveTeamsFlow(page) {
     }
 
     const confirm = prompt("Confirm? (yes/no): ");
-    if (confirm !== "yes") continue;
+    if (confirm.toLowerCase() !== "yes") continue;
 
     for (let i of selected) {
       const team = teams[i];
@@ -259,8 +272,9 @@ async function runLeaveTeamsFlow(page) {
 
     log("DONE", "Batch completed");
 
-    const again = prompt("Continue? (yes/no): ");
-    if (again !== "yes") break;
+    // ✅ IMPROVED CONTINUE PROMPT
+    const shouldContinue = askToContinue();
+    if (!shouldContinue) break;
   }
 }
 
