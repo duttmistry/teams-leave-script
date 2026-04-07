@@ -17,7 +17,8 @@ async function clickByIncludes(page, substrings, options = {}) {
       const nodes = [...document.querySelectorAll(selectors)];
       for (const el of nodes) {
         if (!el.offsetParent) continue;
-        const t = `${el.innerText || ""} ${el.getAttribute("aria-label") || ""}`.toLowerCase();
+        const t =
+          `${el.innerText || ""} ${el.getAttribute("aria-label") || ""}`.toLowerCase();
         if (needles.every((n) => t.includes(n.toLowerCase()))) {
           el.click();
           return true;
@@ -39,9 +40,11 @@ async function focusPeoplePicker(page) {
       const ph = (inp.getAttribute("placeholder") || "").toLowerCase();
       const al = (inp.getAttribute("aria-label") || "").toLowerCase();
       const blob = `${ph} ${al}`;
-      if (blob.includes("group name") || blob.includes("name this group")) return false;
+      if (blob.includes("group name") || blob.includes("name this group"))
+        return false;
       if (inp.getAttribute("type") === "search") return true;
-      if (/(name|email|search|people|participant|add|required)/.test(blob)) return true;
+      if (/(name|email|search|people|participant|add|required)/.test(blob))
+        return true;
       if (inp.getAttribute("role") === "combobox") return true;
       return false;
     };
@@ -137,170 +140,142 @@ async function openNewGroupChatFlow(page) {
   await delay(1000);
 }
 
-async function runLeaveTeamsFlow(page) {
-  let continueProcess = true;
+async function autoScrollTeams(page) {
+  const panelSelector = '[role="tree"]';
 
-  while (continueProcess) {
-    try {
-      await page.waitForSelector('[role="treeitem"]', { timeout: 60000 });
+  for (let i = 0; i < 10; i++) {
+    await page.evaluate((selector) => {
+      const panel = document.querySelector(selector);
+      if (panel) panel.scrollTop = panel.scrollHeight;
+    }, panelSelector);
 
-      const teamElements = await page.$$('[role="treeitem"]');
-      const teams = [];
-
-
-for (let el of teamElements) {
-  const name = await page.evaluate((el) => el.innerText, el);
-
-  if (!name.trim()) continue;
-
-  try {
-    // Right click to open menu
-    await el.click({ button: "right" });
-    await page.waitForSelector('[role="menu"]', { timeout: 3000 });
-
-    const menuItems = await page.$$(
-      '.ms-ContextualMenu-itemText, [role="menuitem"]'
-    );
-
-    let hasLeaveOption = false;
-
-    for (let item of menuItems) {
-      const text = await page.evaluate(
-        (el) => el.innerText.toLowerCase(),
-        item
-      );
-
-      if (text.includes("leave")) {
-        hasLeaveOption = true;
-        break;
-      }
-    }
-
-    // ✅ Only include teams WITHOUT leave option
-    if (!hasLeaveOption) {
-      teams.push({ name, element: el });
-    }
-
-    // Close menu
-    await page.keyboard.press("Escape");
-    await delay(500);
-
-  } catch (err) {
-    console.log("Error checking team:", name);
+    await delay(1000);
   }
 }
 
-      if (teams.length === 0) {
-        console.log("No teams found.");
-        break;
-      }
+async function clickMoreOptions(page) {
+  return await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('button, [role="button"]')];
 
-      console.log("\n==== Your Teams ====");
-      teams.forEach((t, i) => {
-        console.log(`${i + 1}. ${t.name}`);
-      });
+    const moreBtn = btns.find((b) => {
+      const text = (b.innerText || "").toLowerCase();
+      const aria = (b.getAttribute("aria-label") || "").toLowerCase();
+      return text.includes("more") || aria.includes("more options");
+    });
 
-      console.log("\nOptions:");
-      console.log("A - Leave ALL teams");
-      console.log("X - Exit this mode");
-      console.log("Enter team number (example: 3)");
-      console.log("Enter multiple numbers (example: 1,4,6)");
-
-      const choice = prompt("Your selection: ");
-
-      if (choice.toLowerCase() === "x") {
-        console.log("Leaving team mode.");
-        break;
-      }
-
-      let selectedIndexes = [];
-
-      if (choice.toLowerCase() === "a") {
-        selectedIndexes = teams.map((_, i) => i);
-      } else {
-        selectedIndexes = choice
-          .split(",")
-          .map((num) => parseInt(num.trim()) - 1)
-          .filter((i) => i >= 0 && i < teams.length);
-      }
-
-      if (selectedIndexes.length === 0) {
-        console.log("No valid selection.");
-        continue;
-      }
-
-      const confirm = prompt("Are you sure? (yes/no): ");
-      if (confirm.toLowerCase() !== "yes") {
-        console.log("Cancelled.");
-        continue;
-      }
-
-      for (let index of selectedIndexes) {
-        try {
-          console.log(`Processing: ${teams[index].name}`);
-
-          await teams[index].element.click({ button: "right" });
-
-          await page.waitForSelector('[role="menu"]', { timeout: 5000 });
-
-          const menuItems = await page.$$(
-            '.ms-ContextualMenu-itemText, [role="menuitem"]',
-          );
-
-          let actionDone = false;
-
-          for (let item of menuItems) {
-            const text = await page.evaluate(
-              (el) => el.innerText.toLowerCase(),
-              item,
-            );
-
-            if (text.includes("leave")) {
-              console.log("Delete not available → Leaving team");
-
-              await item.click();
-
-              await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
-
-              const confirmBtn = await page.evaluateHandle(() => {
-                const buttons = [...document.querySelectorAll("button")];
-                return buttons.find((btn) =>
-                  btn.innerText.toLowerCase().includes("leave"),
-                );
-              });
-
-              if (confirmBtn) {
-                await confirmBtn.click();
-                console.log("Left successfully.");
-              } else {
-                console.log("Leave confirm button not found.");
-              }
-
-              actionDone = true;
-              break;
-            }
-          }
-
-          if (!actionDone) {
-            console.log("No Delete/Leave option found.");
-          }
-
-          await delay(4000);
-        } catch (err) {
-          console.log("Error processing team:", err.message);
-        }
-      }
-
-      console.log("\n✅ Operation completed.");
-
-      const again = prompt("Leave more teams? (yes/no): ");
-      if (again.toLowerCase() !== "yes") {
-        continueProcess = false;
-      }
-    } catch (err) {
-      console.log("Unexpected error:", err.message);
-      continueProcess = false;
+    if (moreBtn) {
+      moreBtn.click();
+      return true;
     }
+    return false;
+  });
+}
+
+async function clickLeaveIfExists(page) {
+  return await page.evaluate(() => {
+    const items = [...document.querySelectorAll('[role="menuitem"], button')];
+
+    const leaveBtn = items.find((el) =>
+      (el.innerText || "").toLowerCase().includes("leave"),
+    );
+
+    if (leaveBtn) {
+      leaveBtn.click();
+      return true;
+    }
+    return false;
+  });
+}
+
+async function confirmLeave(page) {
+  return await page.evaluate(() => {
+    const btns = [...document.querySelectorAll("button")];
+
+    const confirm = btns.find((b) =>
+      (b.innerText || "").toLowerCase().includes("leave"),
+    );
+
+    if (confirm) {
+      confirm.click();
+      return true;
+    }
+    return false;
+  });
+}
+
+async function runLeaveTeamsFlow(page) {
+  try {
+    await page.waitForSelector('[role="treeitem"]', { timeout: 60000 });
+
+    console.log("🔄 Loading all teams...");
+    await autoScrollTeams(page);
+
+    const teamElements = await page.$$('[role="treeitem"]');
+
+    console.log(`📊 Total Teams Found: ${teamElements.length}`);
+
+    let success = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let i = 0; i < teamElements.length; i++) {
+      try {
+        const team = teamElements[i];
+        const name = await page.evaluate((el) => el.innerText, team);
+
+        if (!name.trim()) continue;
+
+        console.log(`\n➡️ Processing: ${name}`);
+
+        // Open team
+        await team.click();
+        await delay(1500);
+
+        // Click "More options"
+        const moreClicked = await clickMoreOptions(page);
+        if (!moreClicked) {
+          console.log("⚠️ More options not found");
+          skipped++;
+          continue;
+        }
+
+        await delay(1000);
+
+        // Click Leave
+        const leaveClicked = await clickLeaveIfExists(page);
+
+        if (!leaveClicked) {
+          console.log("⚠️ Cannot leave (owner/restricted)");
+          skipped++;
+          continue;
+        }
+
+        await delay(1000);
+
+        // Confirm Leave
+        const confirmed = await confirmLeave(page);
+
+        if (confirmed) {
+          console.log("✅ Left successfully");
+          success++;
+        } else {
+          console.log("❌ Confirm not found");
+          failed++;
+        }
+
+        await delay(2500);
+      } catch (err) {
+        console.log("❌ Error:", err.message);
+        failed++;
+      }
+    }
+
+    console.log("\n======= FINAL SUMMARY =======");
+    console.log(`✅ Left: ${success}`);
+    console.log(`⚠️ Skipped: ${skipped}`);
+    console.log(`❌ Failed: ${failed}`);
+  } catch (err) {
+    console.log("🚨 Unexpected error:", err.message);
   }
 }
 
@@ -321,7 +296,9 @@ async function runCreateGroupsFlow(page, groupCount, emails) {
 
       const created = await confirmCreateGroup(page);
       if (!created) {
-        console.log(`Could not find Create/Start for "${groupName}". Check UI layout.`);
+        console.log(
+          `Could not find Create/Start for "${groupName}". Check UI layout.`,
+        );
       } else {
         console.log(`Submitted "${groupName}".`);
       }
@@ -352,7 +329,9 @@ async function runCreateGroupsFlow(page, groupCount, emails) {
     }
     if (!signedIn) {
       console.log("Opening Teams...");
-      await page.goto("https://teams.microsoft.com", { waitUntil: "networkidle2" });
+      await page.goto("https://teams.microsoft.com", {
+        waitUntil: "networkidle2",
+      });
       console.log("Please sign in manually (90 seconds)...");
       await delay(90000);
       signedIn = true;
